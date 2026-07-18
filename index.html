@@ -316,7 +316,8 @@ function seedChild(name, dailyDefs, summerDefs){
     dailyTasks: dailyDefs.map(function(d){ return { id: uid(), title: d.title, activeFrom: d.activeFrom || null }; }),
     summerTasks: [],
     completions: {},      // date -> { daily: { taskId: localTimestamp } }
-    dayAssignments: {},   // date -> [summerTaskId,...]
+    dayAssignments: {},   // date -> [summerTaskId,...]（子供が「今日やる」と選んだタスク）
+    dayQuota: {},         // date -> その日にやってほしいサマータスクの目標数
     summerCarry: 0,
     settings: { pointsPerDay: 10, pointsPerEarlyDay: 10, pointsPerLateDay: 5, morningMultiplier: 2 }
   };
@@ -391,6 +392,14 @@ function loadData(){
         }
       });
       if(!c.dayAssignments) c.dayAssignments={};
+      if(!c.dayQuota){
+        // 旧バージョン（自動で特定タスクを割り当てていた版）からの移行:
+        // すでに割り当て済みの件数をそのままその日の目標数(quota)として扱う。
+        c.dayQuota = {};
+        Object.keys(c.dayAssignments).forEach(function(date){
+          c.dayQuota[date] = (c.dayAssignments[date]||[]).length;
+        });
+      }
       if(c.summerCarry === undefined) c.summerCarry = 0;
       if(!c.settings) c.settings = {};
       if(c.settings.pointsPerDay === undefined) c.settings.pointsPerDay = 10;
@@ -412,21 +421,25 @@ function saveData(){
 
 var data = loadData();
 
-/* ---------- サマータスク割り当てロジック ----------
+/* ---------- サマータスク：1日の目標数(quota)の算出 ----------
   START_DATE から min(today, SUMMER_DEADLINE) まで、
-  未割当かつ未完了のタスクを「休みの残り日数に均等」に割り振る（Bresenham方式の端数キャリー）。
-  「残タスク数 / 残日数」を毎日積み上げ、1を超えた分だけその日に割り当てるので、
-  特定の日に偏らず全期間に均等に散らばる。早期完了で残タスクが減れば自然にペースも緩やかになり、
-  逆に残日数が減れば締切までに必ず割り当てが完了する。
+  各日の「やってほしいサマータスクの数」を「休みの残り日数に均等」になるよう算出する
+  （Bresenham方式の端数キャリー）。「残タスク数 / 残日数」を毎日積み上げ、
+  1を超えた分だけその日の目標数にするので、特定の日に偏らず全期間に均等に散らばる。
+  ※ どのタスクを選ぶかは子供が自由に選べるので、ここでは「個数」だけを決める。
+  早期完了で残タスクが減れば自然にペースも緩やかになり、逆に残日数が減れば
+  締切までに必ず目標数の合計がタスク総数に届く。
 */
 function ensureAssignments(child){
   if(child.summerCarry === undefined) child.summerCarry = 0;
-  var lastAssignDate = minDateStr(todayStr(), SUMMER_DEADLINE);
-  if(START_DATE > lastAssignDate) return;
+  if(!child.dayQuota) child.dayQuota = {};
+  if(!child.dayAssignments) child.dayAssignments = {};
+  var lastDate = minDateStr(todayStr(), SUMMER_DEADLINE);
+  if(START_DATE > lastDate) return;
   var cursor = START_DATE;
   var changed = false;
-  while(cursor <= lastAssignDate){
-    if(!child.dayAssignments[cursor]){
+  while(cursor <= lastDate){
+    if(child.dayQuota[cursor] === undefined){
       var remaining = child.summerTasks.filter(function(t){
         return !t.completedDate && !t.assignedDate;
       });
@@ -437,14 +450,30 @@ function ensureAssignments(child){
       var quota = Math.floor(child.summerCarry);
       if(quota > remaining.length) quota = remaining.length;
       child.summerCarry -= quota;
-      var picked = remaining.slice(0, quota);
-      child.dayAssignments[cursor] = picked.map(function(t){ return t.id; });
-      picked.forEach(function(t){ t.assignedDate = cursor; });
+      child.dayQuota[cursor] = quota;
+      if(!child.dayAssignments[cursor]) child.dayAssignments[cursor] = [];
       changed = true;
     }
     cursor = addDays(cursor, 1);
   }
   if(changed) saveData();
+}
+// 子供がその日にやると選んだタスクを追加する
+function pickSummerTaskForDay(child, task, dateStr){
+  if(task.assignedDate) return; // すでに他の日で選ばれている
+  task.assignedDate = dateStr;
+  if(!child.dayAssignments[dateStr]) child.dayAssignments[dateStr] = [];
+  child.dayAssignments[dateStr].push(task.id);
+  saveData();
+  openDayModal(child, dateStr);
+}
+// 選択を取り消す（まだ完了していないものだけ）
+function unpickSummerTaskForDay(child, task, dateStr){
+  if(task.completedDate) return;
+  task.assignedDate = null;
+  child.dayAssignments[dateStr] = (child.dayAssignments[dateStr]||[]).filter(function(id){ return id!==task.id; });
+  saveData();
+  openDayModal(child, dateStr);
 }
 
 /* ---------- 達成・ポイント計算 ---------- */
@@ -459,28 +488,23 @@ function isDailyTaskDone(child, date, taskId){
   return !!getDailyTimestamp(child, date, taskId);
 }
 function isDayFullyComplete(child, date){
-  var dailyList = dailyTasksForDate(child, date);
-  var dailyAllDone = dailyList.length === 0 ? true :
-    dailyList.every(function(t){ return isDailyTaskDone(child, date, t.id); });
-  var assignedIds = child.dayAssignments[date] || [];
-  var summerAllDone = assignedIds.every(function(id){
-    var t = child.summerTasks.find(function(x){ return x.id === id; });
-    return t && t.completedDate;
-  });
-  if(dailyList.length === 0 && assignedIds.length === 0) return false;
-  return dailyAllDone && summerAllDone;
+  var s = getDayStatus(child, date).status;
+  return s === "ontime" || s === "late";
 }
 // その日のステータス: empty(タスクなし) / incomplete(未完了あり) / ontime(当日中に完了) / late(後日まとめて完了)
 function getDayStatus(child, date){
   var dailyList = dailyTasksForDate(child, date);
+  var quota = child.dayQuota[date] || 0;
   var assignedIds = child.dayAssignments[date] || [];
-  if(dailyList.length === 0 && assignedIds.length === 0) return { status:"empty" };
+  if(dailyList.length === 0 && quota === 0 && assignedIds.length === 0) return { status:"empty" };
 
   var dailyAllDone = dailyList.every(function(t){ return isDailyTaskDone(child, date, t.id); });
-  var summerAllDone = assignedIds.every(function(id){
+  var completedCount = assignedIds.filter(function(id){
     var t = child.summerTasks.find(function(x){ return x.id === id; });
     return t && t.completedDate;
-  });
+  }).length;
+  // 選んだタスクは全部終わっていて、なおかつ目標数以上選んで完了していること
+  var summerAllDone = (assignedIds.length >= quota) && (completedCount === assignedIds.length);
   if(!dailyAllDone || !summerAllDone) return { status:"incomplete" };
 
   var allOnTime = true;
@@ -766,13 +790,15 @@ function renderDayCell(child, dateStr, dayNum, inRange){
     var dots = el("div", {class:"dots"});
     var dailyList = dailyTasksForDate(child, dateStr);
     var dailyDone = dailyList.length>0 && dailyList.every(function(t){return isDailyTaskDone(child,dateStr,t.id);});
+    var quota = child.dayQuota[dateStr] || 0;
     var assignedIds = child.dayAssignments[dateStr] || [];
-    var summerDone = assignedIds.length>0 && assignedIds.every(function(id){
+    var completedCount = assignedIds.filter(function(id){
       var t = child.summerTasks.find(function(x){return x.id===id;});
       return t && t.completedDate;
-    });
+    }).length;
+    var summerDone = assignedIds.length>=quota && completedCount===assignedIds.length && (quota>0 || assignedIds.length>0);
     if(dailyList.length>0) dots.appendChild(el("div", {class:"dot"+(dailyDone?" on":"")}));
-    if(assignedIds.length>0) dots.appendChild(el("div", {class:"dot"+(summerDone?" on":"")}));
+    if(quota>0 || assignedIds.length>0) dots.appendChild(el("div", {class:"dot"+(summerDone?" on":"")}));
     cell.appendChild(dots);
   }
   if(!isFuture){
@@ -837,9 +863,19 @@ function openDayModal(child, dateStr){
       justStampedTaskKey = null;
     }
 
+    var quota = child.dayQuota[dateStr] || 0;
     var assignedIds = child.dayAssignments[dateStr] || [];
+    var completedCount = assignedIds.filter(function(id){
+      var t = child.summerTasks.find(function(x){ return x.id===id; });
+      return t && t.completedDate;
+    }).length;
+
+    if(quota > 0 || assignedIds.length > 0){
+      box.appendChild(el("div", {class:"section-title"}, [
+        "サマータスク（この日の分）" + (quota>0 ? "　目標 " + completedCount + "/" + quota : "")
+      ]));
+    }
     if(assignedIds.length){
-      box.appendChild(el("div", {class:"section-title"}, ["サマータスク（この日の分）"]));
       assignedIds.forEach(function(id){
         var t = child.summerTasks.find(function(x){ return x.id===id; });
         if(!t) return;
@@ -847,11 +883,33 @@ function openDayModal(child, dateStr){
         var item = renderTaskItem(t.title, done, function(){
           toggleSummerTaskOnDate(child, t, dateStr);
         });
+        if(!done){
+          var tag = el("button", {class:"small ghost", style:"padding:4px 8px;font-size:11px;"}, ["選び直す"]);
+          tag.onclick = function(e){ if(e && e.stopPropagation) e.stopPropagation(); unpickSummerTaskForDay(child, t, dateStr); };
+          item.appendChild(tag);
+        }
         box.appendChild(item);
       });
     }
 
-    if(!dailyList.length && !assignedIds.length){
+    if(assignedIds.length < quota || dateStr === todayStr()){
+      var pool = child.summerTasks.filter(function(t){ return !t.completedDate && !t.assignedDate; });
+      if(pool.length){
+        var needMore = Math.max(0, quota - assignedIds.length);
+        box.appendChild(el("div", {class:"section-title"}, [
+          needMore > 0 ? ("👉 サマータスクを選ぼう（あと" + needMore + "個）") : "👉 前倒しでサマータスクを選ぶ（自由に追加OK）"
+        ]));
+        pool.forEach(function(t){
+          var row = el("div", {class:"task-item", onclick:function(){ pickSummerTaskForDay(child, t, dateStr); }}, [
+            el("div", {class:"task-check"}, ["＋"]),
+            el("div", {class:"task-label"}, [t.title])
+          ]);
+          box.appendChild(row);
+        });
+      }
+    }
+
+    if(!dailyList.length && quota===0 && !assignedIds.length){
       box.appendChild(el("div", {class:"empty-msg"}, ["この日のタスクはまだ登録されていません。「デイリータスク編集」「サマータスク編集」から追加してね。"]));
     }
     return box;
@@ -1005,7 +1063,7 @@ function openEditSummerModal(child){
     var box = el("div", {});
     box.appendChild(el("div", {class:"modal-title"}, ["✎ サマータスク編集"]));
     box.appendChild(el("p", {class:"muted-small", style:"margin-bottom:10px;"}, [
-      "8/23までに終わらせたいタスクの一覧です。休みの日数に均等に割り振られます。単元数を指定すると自動でその数だけ追加されます。"
+      "8/23までに終わらせたいタスクの一覧です。1日にやってほしい個数は休みの日数に均等に決まりますが、どのタスクをやるかは子供が毎日カレンダーの画面で自由に選べます。単元数を指定すると自動でその数だけ追加されます。"
     ]));
     child.summerTasks.forEach(function(t){
       var row = el("div", {class:"list-edit-item"});
