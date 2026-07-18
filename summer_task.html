@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>夏休み宿題アプリ</title>
+<style>
+  :root{
+    --bg:#fdf6ec;
+    --card:#ffffff;
+    --accent:#ff8a5c;
+    --accent2:#4fb3a9;
+    --accent3:#ffcb4a;
+    --text:#3a3226;
+    --muted:#9a8f7d;
+    --done:#7bc47f;
+    --danger:#e2645a;
+    --border:#eee0cc;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:"Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app{max-width:720px;margin:0 auto;padding:16px 12px 60px;}
+  h1,h2,h3{margin:0.2em 0;}
+  button{
+    font-family:inherit;
+    cursor:pointer;
+    border:none;
+    border-radius:12px;
+    padding:10px 16px;
+    font-size:15px;
+    background:var(--accent);
+    color:#fff;
+    touch-action:manipulation;
+  }
+  button.secondary{background:var(--accent2);}
+  button.ghost{background:#fff;color:var(--text);border:2px solid var(--border);}
+  button.danger{background:var(--danger);}
+  button.small{padding:6px 10px;font-size:13px;border-radius:8px;}
+  input[type=text], input[type=number], input[type=date]{
+    font-family:inherit;
+    font-size:15px;
+    padding:8px 10px;
+    border:2px solid var(--border);
+    border-radius:10px;
+    width:100%;
+  }
+  .row{display:flex;gap:8px;align-items:center;}
+  .between{justify-content:space-between;}
+  .wrap{flex-wrap:wrap;}
+  .card{
+    background:var(--card);
+    border-radius:18px;
+    padding:16px;
+    margin-bottom:14px;
+    box-shadow:0 2px 10px rgba(150,120,80,0.08);
+  }
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:14px;
+  }
+  .topbar h1{font-size:20px;}
+  .child-grid{display:grid;grid-template-columns:1fr;gap:12px;}
+  .child-card{
+    background:var(--card);
+    border-radius:20px;
+    padding:20px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    box-shadow:0 3px 12px rgba(150,120,80,0.12);
+    border:3px solid transparent;
+  }
+  .child-card:active{border-color:var(--accent3);}
+  .child-name{font-size:20px;font-weight:bold;}
+  .child-points{color:var(--accent);font-weight:bold;font-size:15px;margin-top:4px;}
+  .avatar{
+    width:52px;height:52px;border-radius:50%;
+    background:linear-gradient(135deg,var(--accent3),var(--accent));
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;font-size:22px;font-weight:bold;
+    flex-shrink:0;
+  }
+  .backbtn{background:none;color:var(--text);padding:6px 4px;font-size:15px;}
+  .points-banner{
+    background:linear-gradient(135deg,#fff4de,#ffe6c2);
+    border-radius:16px;
+    padding:14px 18px;
+    text-align:center;
+    margin-bottom:14px;
+  }
+  .points-banner .big{font-size:32px;font-weight:bold;color:var(--accent);}
+  .month-title{font-size:16px;font-weight:bold;margin:10px 2px 6px;}
+  .weekday-row{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px;}
+  .weekday-row div{text-align:center;font-size:12px;color:var(--muted);}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+  .cal-cell{
+    position:relative;
+    aspect-ratio:1/1;
+    border-radius:10px;
+    background:#f6efe1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    font-size:13px;
+    color:var(--muted);
+  }
+  .cal-cell.empty{background:transparent;}
+  .cal-cell.inrange{background:#fff;color:var(--text);border:2px solid var(--border);cursor:pointer;}
+  .cal-cell.future{opacity:0.5;}
+  .cal-cell.today{border-color:var(--accent);border-width:2px;}
+  .cal-cell.complete{
+    background:linear-gradient(135deg,#e4f7e1,#d3f0cf);
+    border-color:var(--done);
+    animation:cellGlow 1.6s ease-in-out infinite;
+  }
+  @keyframes cellGlow{
+    0%,100%{box-shadow:0 0 0 rgba(255,196,64,0);}
+    50%{box-shadow:0 0 12px rgba(255,196,64,0.9);}
+  }
+  .cal-cell .datenum{font-weight:bold;}
+  .cal-cell .ok-stamp{
+    position:absolute;top:1px;right:1px;
+    font-size:9px;font-weight:bold;color:var(--danger);
+    border:2px solid var(--danger);border-radius:5px;
+    padding:0 3px;background:rgba(255,255,255,0.9);
+    transform:rotate(-14deg);line-height:1.4;
+  }
+  .cal-cell .pt-label{font-size:9px;color:#4c8a4f;font-weight:bold;margin-top:1px;}
+  .cal-cell .dots{display:flex;gap:2px;margin-top:2px;}
+  .cal-cell .dot{width:5px;height:5px;border-radius:50%;background:var(--border);}
+  .cal-cell .dot.on{background:var(--accent2);}
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(60,45,20,0.45);
+    display:flex;align-items:flex-end;justify-content:center;
+    z-index:50;
+  }
+  .modal-sheet{
+    background:#fff;
+    width:100%;max-width:720px;
+    border-radius:22px 22px 0 0;
+    padding:18px 18px 28px;
+    max-height:85vh;
+    overflow-y:auto;
+    animation:slideUp 0.22s ease-out;
+  }
+  @keyframes slideUp{from{transform:translateY(30px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+  .modal-title{font-size:18px;font-weight:bold;margin-bottom:12px;}
+  .task-item{
+    display:flex;align-items:center;gap:12px;
+    padding:12px 10px;
+    border-radius:14px;
+    background:#faf6ee;
+    margin-bottom:8px;
+    position:relative;
+    overflow:visible;
+  }
+  .task-item.done{background:#eaf7e8;}
+  .task-check{
+    width:34px;height:34px;border-radius:50%;
+    border:2px solid var(--accent2);
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;background:#fff;font-size:18px;
+  }
+  .task-item.done .task-check{background:var(--done);border-color:var(--done);color:#fff;}
+  .task-label{flex:1;font-size:15px;}
+  .task-item.done .task-label{text-decoration:line-through;color:var(--muted);}
+  .stamp{
+    position:absolute;right:8px;top:50%;
+    transform:translateY(-50%) rotate(-18deg) scale(0);
+    font-size:13px;font-weight:bold;
+    color:var(--danger);
+    border:3px solid var(--danger);
+    border-radius:8px;
+    padding:2px 8px;
+    background:rgba(255,255,255,0.85);
+    animation:stampPop 0.4s cubic-bezier(.2,1.4,.5,1) forwards;
+  }
+  @keyframes stampPop{
+    0%{transform:translateY(-50%) rotate(-18deg) scale(2.4);opacity:0;}
+    60%{transform:translateY(-50%) rotate(-18deg) scale(0.9);opacity:1;}
+    100%{transform:translateY(-50%) rotate(-18deg) scale(1);opacity:1;}
+  }
+  .section-title{font-size:15px;font-weight:bold;margin:14px 0 8px;color:var(--accent);}
+  .allDoneBanner{
+    background:linear-gradient(135deg,#fff0c2,#ffe08a);
+    border-radius:14px;padding:10px 14px;text-align:center;
+    font-weight:bold;color:#8a6300;margin-bottom:10px;
+  }
+  .tag{
+    display:inline-block;font-size:11px;background:var(--accent2);color:#fff;
+    padding:2px 7px;border-radius:8px;margin-left:6px;
+  }
+  .tag.overdue{background:var(--danger);}
+  .muted-small{font-size:12px;color:var(--muted);margin-top:2px;}
+  .actionsGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;}
+  .closeX{position:absolute;top:14px;right:16px;background:none;color:var(--muted);font-size:20px;padding:4px 8px;}
+  .list-edit-item{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+  .list-edit-item input[type=text]{flex:2;}
+  .list-edit-item input[type=date],.list-edit-item input[type=number]{flex:1;min-width:0;}
+  .empty-msg{color:var(--muted);text-align:center;padding:20px 0;font-size:14px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px;}
+  .allowance-row{padding:8px 0;border-bottom:1px solid var(--border);}
+  .allowance-row:last-child{border-bottom:none;}
+
+  /* ---- お祝い演出 ---- */
+  .confetti-layer{position:fixed;inset:0;pointer-events:none;z-index:300;overflow:hidden;}
+  .confetti-piece{
+    position:absolute;top:-20px;width:8px;height:14px;opacity:0.95;border-radius:2px;
+    animation-name:confettiFall;animation-timing-function:ease-in;animation-fill-mode:forwards;
+  }
+  @keyframes confettiFall{
+    0%{transform:translateY(0) rotate(0deg);opacity:1;}
+    100%{transform:translateY(110vh) rotate(360deg);opacity:0.15;}
+  }
+  .celebrate-banner{
+    position:fixed;top:32%;left:50%;
+    background:linear-gradient(135deg,#ffdf7e,#ff9d6c);
+    color:#7a4300;font-weight:bold;font-size:22px;
+    padding:18px 28px;border-radius:20px;
+    box-shadow:0 10px 26px rgba(0,0,0,0.25);
+    z-index:301;text-align:center;white-space:nowrap;
+    animation:bannerBounce 2s cubic-bezier(.34,1.6,.64,1) forwards;
+  }
+  @keyframes bannerBounce{
+    0%{transform:translate(-50%,-50%) scale(0);opacity:0;}
+    12%{transform:translate(-50%,-50%) scale(1.2);opacity:1;}
+    24%{transform:translate(-50%,-50%) scale(0.92);}
+    36%{transform:translate(-50%,-50%) scale(1.06);}
+    50%{transform:translate(-50%,-50%) scale(1);}
+    85%{transform:translate(-50%,-50%) scale(1);opacity:1;}
+    100%{transform:translate(-50%,-50%) scale(1);opacity:0;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function(){
+"use strict";
+
+/* ---------- 定数 ---------- */
+var START_DATE = "2026-07-18";
+var SUMMER_DEADLINE = "2026-08-23";
+var END_DATE = "2026-08-28";
+var WEEKDAYS_JA = ["日","月","火","水","木","金","土"];
+var STORAGE_KEY = "natsuyasumiAppData_v2";
+
+/* ---------- 日付ユーティリティ ---------- */
+function pad(n){ return n < 10 ? "0"+n : ""+n; }
+function todayStr(){
+  var d = new Date();
+  return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+}
+function parseDate(s){
+  var parts = s.split("-").map(Number);
+  return new Date(parts[0], parts[1]-1, parts[2]);
+}
+function formatDateStr(d){
+  return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+}
+function addDays(s, n){
+  var d = parseDate(s);
+  d.setDate(d.getDate()+n);
+  return formatDateStr(d);
+}
+function daysBetween(a, b){
+  var da = parseDate(a), db = parseDate(b);
+  return Math.round((db - da) / 86400000);
+}
+function minDateStr(a, b){ return a < b ? a : b; }
+function formatDisplay(s){
+  var d = parseDate(s);
+  return (d.getMonth()+1)+"/"+d.getDate()+"("+WEEKDAYS_JA[d.getDay()]+")";
+}
+// ローカル時刻ベースのタイムスタンプ（UTCのISO文字列だと午前/午後判定がズレるため）
+function nowLocalStamp(){
+  var d = new Date();
+  return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+"T"+pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds());
+}
+
+/* ---------- ID ---------- */
+function uid(){ return "id" + Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); }
+
+/* ---------- サマータスク：単元数からタスクを展開 ---------- */
+function expandUnits(title, count, opts){
+  opts = opts || {};
+  count = Math.max(1, Number(count)||1);
+  var arr = [];
+  for(var i=0;i<count;i++){
+    var label;
+    if(opts.pageStart != null){
+      label = title + " p." + (opts.pageStart + i);
+    } else if(count > 1){
+      label = title + "（" + (i+1) + "/" + count + "）";
+    } else {
+      label = title;
+    }
+    arr.push({ id: uid(), title: label, assignedDate: null, completedDate: null, completedAt: null });
+  }
+  return arr;
+}
+
+/* ---------- データ ---------- */
+function seedChild(name, dailyDefs, summerDefs){
+  var c = {
+    id: uid(),
+    name: name,
+    dailyTasks: dailyDefs.map(function(d){ return { id: uid(), title: d.title, activeFrom: d.activeFrom || null }; }),
+    summerTasks: [],
+    completions: {},      // date -> { daily: { taskId: localTimestamp } }
+    dayAssignments: {},   // date -> [summerTaskId,...]
+    summerCarry: 0,
+    settings: { pointsPerDay: 10, pointsPerEarlyDay: 10, pointsPerLateDay: 5, morningMultiplier: 2 }
+  };
+  summerDefs.forEach(function(sd){
+    c.summerTasks = c.summerTasks.concat(expandUnits(sd.title, sd.count, sd.opts));
+  });
+  return c;
+}
+function defaultData(){
+  return {
+    children: [
+      seedChild("こども1", [
+        { title:"くもん さんすう あさ" },
+        { title:"くもん さんすう ゆうがた" },
+        { title:"くもん こくご" },
+        { title:"ピアノれんしゅう１" },
+        { title:"ピアノれんしゅう２" },
+        { title:"なつのくらし いろぬり" },
+        { title:"はみがきカレンダー いろぬり", activeFrom:"2026-08-01" }
+      ], [
+        { title:"学校こくごプリント", count:2 },
+        { title:"学校さんすうプリント", count:3 },
+        { title:"なつの友", count:24, opts:{ pageStart:63 } },
+        { title:"スタディーサプリ", count:17 },
+        { title:"あさがおのかんさつ（7月分）", count:1 },
+        { title:"あさがおのかんさつ（8月分）", count:1 },
+        { title:"仕事大作戦", count:1 },
+        { title:"わたしがよんだ本", count:1 }
+      ]),
+      seedChild("こども2", [
+        { title:"公文算数" },
+        { title:"公文国語" },
+        { title:"公文英語" },
+        { title:"歯磨きカレンダー", activeFrom:"2026-08-01" },
+        { title:"漢字検定" }
+      ], [
+        { title:"夏の友", count:21 },
+        { title:"スタディーサプリ", count:11 },
+        { title:"食育マイスター", count:1 }
+      ]),
+      seedChild("こども3", [
+        { title:"志門塾 テキスト4ページ" },
+        { title:"漢字検定" },
+        { title:"歯磨きカレンダー", activeFrom:"2026-08-01" }
+      ], [
+        { title:"夏の友", count:11 },
+        { title:"スタディーサプリ", count:14 },
+        { title:"食育マイスター", count:1 }
+      ])
+    ]
+  };
+}
+function loadData(){
+  try{
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return defaultData();
+    var parsed = JSON.parse(raw);
+    if(!parsed.children || !parsed.children.length) return defaultData();
+    parsed.children.forEach(function(c){
+      if(!c.dailyTasks) c.dailyTasks=[];
+      if(!c.summerTasks) c.summerTasks=[];
+      if(!c.completions) c.completions={};
+      Object.keys(c.completions).forEach(function(date){
+        var rec = c.completions[date];
+        if(!rec) return;
+        if(Array.isArray(rec.daily)){
+          var obj = {};
+          rec.daily.forEach(function(id){ obj[id] = date + "T12:00:00"; });
+          rec.daily = obj;
+        } else if(!rec.daily){
+          rec.daily = {};
+        }
+      });
+      if(!c.dayAssignments) c.dayAssignments={};
+      if(c.summerCarry === undefined) c.summerCarry = 0;
+      if(!c.settings) c.settings = {};
+      if(c.settings.pointsPerDay === undefined) c.settings.pointsPerDay = 10;
+      if(c.settings.pointsPerEarlyDay === undefined) c.settings.pointsPerEarlyDay = 10;
+      if(c.settings.pointsPerLateDay === undefined) c.settings.pointsPerLateDay = 5;
+      if(c.settings.morningMultiplier === undefined) c.settings.morningMultiplier = 2;
+      c.dailyTasks.forEach(function(t){ if(t.activeFrom === undefined) t.activeFrom = null; });
+      c.summerTasks.forEach(function(t){ if(t.completedAt === undefined) t.completedAt = null; });
+    });
+    return parsed;
+  }catch(e){
+    console.error("load error", e);
+    return defaultData();
+  }
+}
+function saveData(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+var data = loadData();
+
+/* ---------- サマータスク割り当てロジック ----------
+  START_DATE から min(today, SUMMER_DEADLINE) まで、
+  未割当かつ未完了のタスクを「休みの残り日数に均等」に割り振る（Bresenham方式の端数キャリー）。
+  「残タスク数 / 残日数」を毎日積み上げ、1を超えた分だけその日に割り当てるので、
+  特定の日に偏らず全期間に均等に散らばる。早期完了で残タスクが減れば自然にペースも緩やかになり、
+  逆に残日数が減れば締切までに必ず割り当てが完了する。
+*/
+function ensureAssignments(child){
+  if(child.summerCarry === undefined) child.summerCarry = 0;
+  var lastAssignDate = minDateStr(todayStr(), SUMMER_DEADLINE);
+  if(START_DATE > lastAssignDate) return;
+  var cursor = START_DATE;
+  var changed = false;
+  while(cursor <= lastAssignDate){
+    if(!child.dayAssignments[cursor]){
+      var remaining = child.summerTasks.filter(function(t){
+        return !t.completedDate && !t.assignedDate;
+      });
+      var remainingDays = daysBetween(cursor, SUMMER_DEADLINE) + 1;
+      if(remainingDays < 1) remainingDays = 1;
+      var rate = remaining.length / remainingDays;
+      child.summerCarry += rate;
+      var quota = Math.floor(child.summerCarry);
+      if(quota > remaining.length) quota = remaining.length;
+      child.summerCarry -= quota;
+      var picked = remaining.slice(0, quota);
+      child.dayAssignments[cursor] = picked.map(function(t){ return t.id; });
+      picked.forEach(function(t){ t.assignedDate = cursor; });
+      changed = true;
+    }
+    cursor = addDays(cursor, 1);
+  }
+  if(changed) saveData();
+}
+
+/* ---------- 達成・ポイント計算 ---------- */
+function dailyTasksForDate(child, date){
+  return child.dailyTasks.filter(function(t){ return !t.activeFrom || t.activeFrom <= date; });
+}
+function getDailyTimestamp(child, date, taskId){
+  var rec = child.completions[date];
+  return (rec && rec.daily && rec.daily[taskId]) || null;
+}
+function isDailyTaskDone(child, date, taskId){
+  return !!getDailyTimestamp(child, date, taskId);
+}
+function isDayFullyComplete(child, date){
+  var dailyList = dailyTasksForDate(child, date);
+  var dailyAllDone = dailyList.length === 0 ? true :
+    dailyList.every(function(t){ return isDailyTaskDone(child, date, t.id); });
+  var assignedIds = child.dayAssignments[date] || [];
+  var summerAllDone = assignedIds.every(function(id){
+    var t = child.summerTasks.find(function(x){ return x.id === id; });
+    return t && t.completedDate;
+  });
+  if(dailyList.length === 0 && assignedIds.length === 0) return false;
+  return dailyAllDone && summerAllDone;
+}
+// その日のステータス: empty(タスクなし) / incomplete(未完了あり) / ontime(当日中に完了) / late(後日まとめて完了)
+function getDayStatus(child, date){
+  var dailyList = dailyTasksForDate(child, date);
+  var assignedIds = child.dayAssignments[date] || [];
+  if(dailyList.length === 0 && assignedIds.length === 0) return { status:"empty" };
+
+  var dailyAllDone = dailyList.every(function(t){ return isDailyTaskDone(child, date, t.id); });
+  var summerAllDone = assignedIds.every(function(id){
+    var t = child.summerTasks.find(function(x){ return x.id === id; });
+    return t && t.completedDate;
+  });
+  if(!dailyAllDone || !summerAllDone) return { status:"incomplete" };
+
+  var allOnTime = true;
+  var timestamps = [];
+  dailyList.forEach(function(t){
+    var ts = getDailyTimestamp(child, date, t.id);
+    timestamps.push(ts);
+    if(!ts || ts.slice(0,10) !== date) allOnTime = false;
+  });
+  assignedIds.forEach(function(id){
+    var t = child.summerTasks.find(function(x){ return x.id === id; });
+    timestamps.push(t.completedAt || (t.completedDate + "T12:00:00"));
+    if(t.completedDate !== date) allOnTime = false;
+  });
+  if(!allOnTime) return { status:"late" };
+
+  var latest = timestamps.reduce(function(a,b){ return (b && b > a) ? b : a; }, "");
+  var hour = latest ? Number(latest.slice(11,13)) : 24;
+  return { status:"ontime", morning: hour < 12 };
+}
+function dayEarnedPoints(child, date){
+  var status = getDayStatus(child, date);
+  var s = child.settings;
+  if(status.status === "ontime"){
+    var base = Number(s.pointsPerDay) || 0;
+    return status.morning ? base * (Number(s.morningMultiplier) || 1) : base;
+  }
+  if(status.status === "late") return Number(s.pointsPerLateDay) || 0;
+  return 0;
+}
+function computeDailyPoints(child){
+  var lastDate = minDateStr(todayStr(), END_DATE);
+  if(START_DATE > lastDate) return 0;
+  var total = 0;
+  var cursor = START_DATE;
+  while(cursor <= lastDate){
+    total += dayEarnedPoints(child, cursor);
+    cursor = addDays(cursor, 1);
+  }
+  return total;
+}
+function computeEarlyBonus(child){
+  if(child.summerTasks.length === 0) return 0;
+  var allDone = child.summerTasks.every(function(t){ return !!t.completedDate; });
+  if(!allDone) return 0;
+  var lastCompleted = child.summerTasks.reduce(function(max, t){
+    return t.completedDate > max ? t.completedDate : max;
+  }, child.summerTasks[0].completedDate);
+  if(lastCompleted >= SUMMER_DEADLINE) return 0;
+  var earlyDays = daysBetween(lastCompleted, SUMMER_DEADLINE);
+  return earlyDays * (Number(child.settings.pointsPerEarlyDay) || 0);
+}
+function computeTotalPoints(child){
+  return computeDailyPoints(child) + computeEarlyBonus(child);
+}
+
+/* ---------- お祝い演出 ---------- */
+function triggerCelebration(points){
+  var layer = document.createElement("div");
+  layer.className = "confetti-layer";
+  var colors = ["#ff8a5c","#4fb3a9","#ffcb4a","#e2645a","#7bc47f","#6ea8fe"];
+  for(var i=0;i<48;i++){
+    var piece = document.createElement("span");
+    piece.className = "confetti-piece";
+    piece.style.left = (Math.random()*100) + "%";
+    piece.style.background = colors[Math.floor(Math.random()*colors.length)];
+    piece.style.animationDuration = (1.4 + Math.random()*1.2) + "s";
+    piece.style.animationDelay = (Math.random()*0.3) + "s";
+    piece.style.transform = "rotate(" + Math.floor(Math.random()*360) + "deg)";
+    layer.appendChild(piece);
+  }
+  document.body.appendChild(layer);
+
+  var banner = document.createElement("div");
+  banner.className = "celebrate-banner";
+  banner.textContent = "🎉 よくできました！ +" + points + "pt";
+  document.body.appendChild(banner);
+
+  setTimeout(function(){
+    layer.remove();
+    banner.remove();
+  }, 2300);
+}
+
+/* ---------- UI 状態 ---------- */
+var ui = { view: "home", childId: null, modal: null };
+
+/* ---------- レンダリング ---------- */
+var appEl = document.getElementById("app");
+
+function render(){
+  appEl.innerHTML = "";
+  if(ui.view === "home"){
+    appEl.appendChild(renderHome());
+  } else if(ui.view === "child"){
+    var child = data.children.find(function(c){ return c.id === ui.childId; });
+    if(!child){ ui.view="home"; render(); return; }
+    ensureAssignments(child);
+    appEl.appendChild(renderChildPage(child));
+  }
+  renderModal();
+}
+
+function el(tag, attrs, children){
+  var e = document.createElement(tag);
+  attrs = attrs || {};
+  Object.keys(attrs).forEach(function(k){
+    if(k === "class") e.className = attrs[k];
+    else if(k === "html") e.innerHTML = attrs[k];
+    else if(k.indexOf("on")===0) e[k] = attrs[k];
+    else e.setAttribute(k, attrs[k]);
+  });
+  (children||[]).forEach(function(c){
+    if(c==null) return;
+    if(typeof c === "string") e.appendChild(document.createTextNode(c));
+    else e.appendChild(c);
+  });
+  return e;
+}
+
+/* ---- ホーム画面 ---- */
+function renderHome(){
+  var wrap = el("div", {});
+  wrap.appendChild(el("div", {class:"topbar"}, [
+    el("h1", {}, ["🌻 夏休み宿題アプリ"])
+  ]));
+  wrap.appendChild(el("p", {class:"muted-small", style:"margin-bottom:14px;"}, [
+    "7/18〜8/28の夏休み。サマータスクは8/23までに終わらせよう！子供を選んでね。"
+  ]));
+  var grid = el("div", {class:"child-grid"});
+  data.children.forEach(function(c){
+    var pts = computeTotalPoints(c);
+    var card = el("div", {class:"child-card", onclick:function(){ ui.view="child"; ui.childId=c.id; render(); }}, [
+      el("div", {class:"row"}, [
+        el("div", {class:"avatar"}, [c.name.slice(0,1)]),
+        el("div", {}, [
+          el("div", {class:"child-name"}, [c.name]),
+          el("div", {class:"child-points"}, ["合計 " + pts + " ポイント"])
+        ])
+      ]),
+      el("div", {style:"font-size:22px;color:var(--muted);"}, ["›"])
+    ]);
+    grid.appendChild(card);
+  });
+  wrap.appendChild(grid);
+  wrap.appendChild(renderAllowanceSummary());
+  return wrap;
+}
+
+function renderAllowanceSummary(){
+  var box = el("div", {class:"card"});
+  box.appendChild(el("h3", {}, ["💰 お小遣い早見表"]));
+  box.appendChild(el("p", {class:"muted-small", style:"margin-bottom:6px;"}, [
+    "1ポイント＝1円換算。100ポイントたまるごとにお小遣いのタイミングの目安だよ。"
+  ]));
+  var grandTotal = 0;
+  data.children.forEach(function(c){
+    var pts = computeTotalPoints(c);
+    grandTotal += pts;
+    var toNext = 100 - (pts % 100);
+    if(toNext === 100) toNext = 0;
+    var row = el("div", {class:"row between allowance-row"}, [
+      el("div", {}, [
+        el("div", {style:"font-weight:bold;"}, [c.name]),
+        el("div", {class:"muted-small"}, [ toNext > 0 ? ("次の100ptまであと" + toNext + "pt") : "ちょうど100ptの節目！" ])
+      ]),
+      el("div", {style:"text-align:right;"}, [
+        el("div", {style:"font-weight:bold;color:var(--accent);"}, [pts + "pt"]),
+        el("div", {class:"muted-small"}, [pts + "円"])
+      ])
+    ]);
+    box.appendChild(row);
+  });
+  box.appendChild(el("div", {class:"row between", style:"margin-top:8px;padding-top:10px;border-top:2px solid var(--border);"}, [
+    el("strong", {}, ["3人合計"]),
+    el("strong", {style:"color:var(--accent);"}, [grandTotal + "pt（" + grandTotal + "円）"])
+  ]));
+  return box;
+}
+
+/* ---- 子供ページ ---- */
+function renderChildPage(child){
+  var wrap = el("div", {});
+  wrap.appendChild(el("div", {class:"topbar"}, [
+    el("button", {class:"backbtn", onclick:function(){ ui.view="home"; render(); }}, ["← もどる"]),
+    el("h2", {}, [child.name]),
+    el("button", {class:"small ghost", onclick:function(){ openRenameModal(child); }}, ["✎ 名前"])
+  ]));
+
+  var pts = computeTotalPoints(child);
+  wrap.appendChild(el("div", {class:"points-banner"}, [
+    el("div", {class:"big"}, [pts + " pt"]),
+    el("div", {class:"muted-small"}, ["合計ポイント（毎日達成 + サマータスク早期完了ボーナス）"])
+  ]));
+
+  var actions = el("div", {class:"actionsGrid"}, [
+    el("button", {class:"secondary", onclick:function(){ openSummerListModal(child); }}, ["📚 サマータスク一覧（前倒しOK）"]),
+    el("button", {class:"ghost", onclick:function(){ openEditDailyModal(child); }}, ["✎ デイリータスク編集"]),
+    el("button", {class:"ghost", onclick:function(){ openEditSummerModal(child); }}, ["✎ サマータスク編集"]),
+    el("button", {class:"ghost", onclick:function(){ openSettingsModal(child); }}, ["⚙ ポイント設定"])
+  ]);
+  wrap.appendChild(actions);
+
+  var overdue = child.summerTasks.filter(function(t){
+    return !t.completedDate && t.assignedDate && t.assignedDate < todayStr();
+  });
+  if(overdue.length){
+    wrap.appendChild(el("div", {class:"card"}, [
+      el("div", {class:"section-title"}, ["⏰ まだ終わっていない宿題（" + overdue.length + "件）"]),
+      el("div", {}, overdue.map(function(t){
+        return renderTaskItem(t.title + "（予定日 " + formatDisplay(t.assignedDate) + "）", false, function(){
+          completeSummerTaskNow(child, t.id);
+        });
+      }))
+    ]));
+  }
+
+  wrap.appendChild(el("div", {class:"card"}, [
+    el("h3", {style:"margin-bottom:8px;"}, ["📅 カレンダー"]),
+    el("p", {class:"muted-small", style:"margin-bottom:10px;"}, ["日付をタップしてタスクを確認・完了しよう（全部終わるとOKスタンプ＆お祝い演出！）"]),
+    renderCalendarBlock(child)
+  ]));
+
+  return wrap;
+}
+
+function renderTaskItem(label, done, onToggle, extraTag, justStamped){
+  var item = el("div", {class:"task-item" + (done ? " done" : "")});
+  var check = el("div", {class:"task-check"}, [ done ? "✓" : "" ]);
+  item.appendChild(check);
+  var labelWrap = el("div", {class:"task-label"}, [label]);
+  if(extraTag) labelWrap.appendChild(extraTag);
+  item.appendChild(labelWrap);
+  item.onclick = function(){ onToggle(item); };
+  if(justStamped){
+    item.appendChild(el("div", {class:"stamp"}, ["できた!"]));
+  }
+  return item;
+}
+
+/* ---- カレンダー描画 ---- */
+function renderCalendarBlock(child){
+  var container = el("div", {});
+  var months = [ {y:2026,m:7}, {y:2026,m:8} ];
+  months.forEach(function(mo){
+    container.appendChild(el("div", {class:"month-title"}, [mo.y + "年 " + mo.m + "月"]));
+    var wdRow = el("div", {class:"weekday-row"});
+    WEEKDAYS_JA.forEach(function(w){ wdRow.appendChild(el("div", {}, [w])); });
+    container.appendChild(wdRow);
+
+    var firstOfMonth = new Date(mo.y, mo.m-1, 1);
+    var startOffset = firstOfMonth.getDay();
+    var daysInMonth = new Date(mo.y, mo.m, 0).getDate();
+    var grid = el("div", {class:"cal-grid"});
+    for(var i=0;i<startOffset;i++){ grid.appendChild(el("div", {class:"cal-cell empty"})); }
+    for(var d=1; d<=daysInMonth; d++){
+      var dateStr = mo.y + "-" + pad(mo.m) + "-" + pad(d);
+      var inRange = dateStr >= START_DATE && dateStr <= END_DATE;
+      grid.appendChild(renderDayCell(child, dateStr, d, inRange));
+    }
+    container.appendChild(grid);
+  });
+  return container;
+}
+
+function renderDayCell(child, dateStr, dayNum, inRange){
+  if(!inRange){
+    return el("div", {class:"cal-cell"}, [ el("div", {class:"datenum"}, [""+dayNum]) ]);
+  }
+  var today = todayStr();
+  var isFuture = dateStr > today;
+  var isToday = dateStr === today;
+  var complete = !isFuture && isDayFullyComplete(child, dateStr);
+  var cls = "cal-cell inrange" + (isFuture?" future":"") + (isToday?" today":"") + (complete?" complete":"");
+  var cell = el("div", {class:cls}, [
+    el("div", {class:"datenum"}, [""+dayNum])
+  ]);
+  if(complete){
+    cell.appendChild(el("div", {class:"ok-stamp"}, ["OK"]));
+    cell.appendChild(el("div", {class:"pt-label"}, ["+" + dayEarnedPoints(child, dateStr)]));
+  }
+  if(!isFuture && !complete){
+    var dots = el("div", {class:"dots"});
+    var dailyList = dailyTasksForDate(child, dateStr);
+    var dailyDone = dailyList.length>0 && dailyList.every(function(t){return isDailyTaskDone(child,dateStr,t.id);});
+    var assignedIds = child.dayAssignments[dateStr] || [];
+    var summerDone = assignedIds.length>0 && assignedIds.every(function(id){
+      var t = child.summerTasks.find(function(x){return x.id===id;});
+      return t && t.completedDate;
+    });
+    if(dailyList.length>0) dots.appendChild(el("div", {class:"dot"+(dailyDone?" on":"")}));
+    if(assignedIds.length>0) dots.appendChild(el("div", {class:"dot"+(summerDone?" on":"")}));
+    cell.appendChild(dots);
+  }
+  if(!isFuture){
+    cell.onclick = function(){ openDayModal(child, dateStr); };
+  }
+  return cell;
+}
+
+/* ---------- モーダル管理 ---------- */
+var modalRoot = null;
+function ensureModalRoot(){
+  if(!modalRoot){
+    modalRoot = document.createElement("div");
+    document.body.appendChild(modalRoot);
+  }
+  return modalRoot;
+}
+function closeModal(){ ui.modal = null; renderModal(); }
+function renderModal(){
+  var root = ensureModalRoot();
+  root.innerHTML = "";
+  if(!ui.modal) return;
+  var overlay = el("div", {class:"modal-overlay", onclick:function(e){ if(e.target===overlay) closeModal(); }});
+  var sheet = el("div", {class:"modal-sheet"});
+  sheet.appendChild(el("button", {class:"closeX", onclick:closeModal}, ["✕"]));
+  sheet.appendChild(ui.modal());
+  overlay.appendChild(sheet);
+  root.appendChild(overlay);
+}
+
+/* ---- 日付詳細モーダル ---- */
+var justStampedTaskKey = null;
+function openDayModal(child, dateStr){
+  ui.modal = function(){
+    var box = el("div", {});
+    box.appendChild(el("div", {class:"modal-title"}, [formatDisplay(dateStr) + " のタスク"]));
+
+    var status = getDayStatus(child, dateStr);
+    if(status.status === "ontime" || status.status === "late"){
+      var pts = dayEarnedPoints(child, dateStr);
+      var msg;
+      if(status.status === "ontime"){
+        msg = status.morning ? ("🎉 午前中に全部完了！ +" + pts + "pt（2倍ボーナス）") : ("🎉 この日はぜんぶ完了！ +" + pts + "pt");
+      } else {
+        msg = "😊 後からだけど全部完了！ +" + pts + "pt";
+      }
+      box.appendChild(el("div", {class:"allDoneBanner"}, [msg]));
+    }
+
+    var dailyList = dailyTasksForDate(child, dateStr);
+    if(dailyList.length){
+      box.appendChild(el("div", {class:"section-title"}, ["デイリータスク"]));
+      dailyList.forEach(function(t){
+        var done = isDailyTaskDone(child, dateStr, t.id);
+        var key = dateStr+":daily:"+t.id;
+        var stamped = justStampedTaskKey === key;
+        var item = renderTaskItem(t.title, done, function(){
+          toggleDailyTask(child, dateStr, t.id);
+        }, null, stamped);
+        box.appendChild(item);
+      });
+      justStampedTaskKey = null;
+    }
+
+    var assignedIds = child.dayAssignments[dateStr] || [];
+    if(assignedIds.length){
+      box.appendChild(el("div", {class:"section-title"}, ["サマータスク（この日の分）"]));
+      assignedIds.forEach(function(id){
+        var t = child.summerTasks.find(function(x){ return x.id===id; });
+        if(!t) return;
+        var done = !!t.completedDate;
+        var item = renderTaskItem(t.title, done, function(){
+          toggleSummerTaskOnDate(child, t, dateStr);
+        });
+        box.appendChild(item);
+      });
+    }
+
+    if(!dailyList.length && !assignedIds.length){
+      box.appendChild(el("div", {class:"empty-msg"}, ["この日のタスクはまだ登録されていません。「デイリータスク編集」「サマータスク編集」から追加してね。"]));
+    }
+    return box;
+  };
+  render();
+}
+
+function toggleDailyTask(child, dateStr, taskId){
+  if(!child.completions[dateStr]) child.completions[dateStr] = { daily: {} };
+  if(!child.completions[dateStr].daily) child.completions[dateStr].daily = {};
+  var rec = child.completions[dateStr].daily;
+  var wasComplete = isDayFullyComplete(child, dateStr);
+  if(rec[taskId]){
+    delete rec[taskId];
+  } else {
+    rec[taskId] = nowLocalStamp();
+    justStampedTaskKey = dateStr+":daily:"+taskId;
+  }
+  saveData();
+  var nowComplete = isDayFullyComplete(child, dateStr);
+  if(!wasComplete && nowComplete) triggerCelebration(dayEarnedPoints(child, dateStr));
+  openDayModal(child, dateStr);
+}
+function setSummerTaskCompleted(t, completed){
+  if(completed){
+    t.completedDate = todayStr();
+    t.completedAt = nowLocalStamp();
+  } else {
+    t.completedDate = null;
+    t.completedAt = null;
+  }
+}
+function toggleSummerTaskOnDate(child, task, dateStr){
+  var wasComplete = isDayFullyComplete(child, dateStr);
+  setSummerTaskCompleted(task, !task.completedDate);
+  saveData();
+  var nowComplete = isDayFullyComplete(child, dateStr);
+  if(!wasComplete && nowComplete) triggerCelebration(dayEarnedPoints(child, dateStr));
+  openDayModal(child, dateStr);
+}
+function completeSummerTaskNow(child, taskId){
+  var t = child.summerTasks.find(function(x){ return x.id===taskId; });
+  if(!t) return;
+  var d = t.assignedDate;
+  var wasComplete = d ? isDayFullyComplete(child, d) : false;
+  setSummerTaskCompleted(t, true);
+  saveData();
+  if(d){
+    var nowComplete = isDayFullyComplete(child, d);
+    if(!wasComplete && nowComplete) triggerCelebration(dayEarnedPoints(child, d));
+  }
+  render();
+}
+
+/* ---- サマータスク一覧モーダル（前倒し実行ページ） ---- */
+function openSummerListModal(child){
+  ui.modal = function(){
+    var box = el("div", {});
+    box.appendChild(el("div", {class:"modal-title"}, ["📚 サマータスク一覧"]));
+    box.appendChild(el("p", {class:"muted-small", style:"margin-bottom:10px;"}, [
+      "先に終わらせてもOK！ここでタップすると今日の日付で完了になり、残りのペースが自動調整されるよ。"
+    ]));
+    if(!child.summerTasks.length){
+      box.appendChild(el("div", {class:"empty-msg"}, ["サマータスクがまだ登録されていません。"]));
+    }
+    var remaining = child.summerTasks.filter(function(t){ return !t.completedDate; });
+    var done = child.summerTasks.filter(function(t){ return t.completedDate; });
+    if(remaining.length){
+      box.appendChild(el("div", {class:"section-title"}, ["未完了（" + remaining.length + "）"]));
+      remaining.forEach(function(t){
+        var tag;
+        if(t.assignedDate){
+          tag = el("span", {class:"tag" + (t.assignedDate < todayStr() ? " overdue":"")}, [
+            t.assignedDate < todayStr() ? "予定超過:" + formatDisplay(t.assignedDate) : "予定日:" + formatDisplay(t.assignedDate)
+          ]);
+        } else {
+          tag = el("span", {class:"tag"}, ["未割当"]);
+        }
+        box.appendChild(renderTaskItem(t.title, false, function(){
+          var d = t.assignedDate;
+          var wasComplete = d ? isDayFullyComplete(child, d) : false;
+          setSummerTaskCompleted(t, true);
+          saveData();
+          if(d){
+            var nowComplete = isDayFullyComplete(child, d);
+            if(!wasComplete && nowComplete) triggerCelebration(dayEarnedPoints(child, d));
+          }
+          openSummerListModal(child);
+        }, tag));
+      });
+    }
+    if(done.length){
+      box.appendChild(el("div", {class:"section-title"}, ["完了ずみ（" + done.length + "）"]));
+      done.forEach(function(t){
+        var tag = el("span", {class:"tag"}, ["完了日:" + formatDisplay(t.completedDate)]);
+        box.appendChild(renderTaskItem(t.title, true, function(){
+          setSummerTaskCompleted(t, false);
+          saveData();
+          openSummerListModal(child);
+        }, tag));
+      });
+    }
+    return box;
+  };
+  render();
+}
+
+/* ---- デイリータスク編集モーダル ---- */
+function openEditDailyModal(child){
+  ui.modal = function(){
+    var box = el("div", {});
+    box.appendChild(el("div", {class:"modal-title"}, ["✎ デイリータスク編集"]));
+    box.appendChild(el("p", {class:"muted-small", style:"margin-bottom:10px;"}, ["毎日おこなうタスクです。開始日を指定すると、その日から表示されます（空欄なら毎日）。"]));
+    child.dailyTasks.forEach(function(t){
+      var row = el("div", {class:"list-edit-item"});
+      var input = el("input", {type:"text"});
+      input.value = t.title;
+      input.onchange = function(){ t.title = input.value; saveData(); };
+      row.appendChild(input);
+      var dateInput = el("input", {type:"date"});
+      dateInput.value = t.activeFrom || "";
+      dateInput.onchange = function(){ t.activeFrom = dateInput.value || null; saveData(); };
+      row.appendChild(dateInput);
+      row.appendChild(el("button", {class:"danger small", onclick:function(){
+        child.dailyTasks = child.dailyTasks.filter(function(x){ return x.id!==t.id; });
+        saveData();
+        openEditDailyModal(child);
+      }}, ["削除"]));
+      box.appendChild(row);
+    });
+    var addRow = el("div", {class:"list-edit-item"});
+    var newInput = el("input", {type:"text", placeholder:"新しいデイリータスク"});
+    var newDateInput = el("input", {type:"date"});
+    addRow.appendChild(newInput);
+    addRow.appendChild(newDateInput);
+    addRow.appendChild(el("button", {class:"small", onclick:function(){
+      if(!newInput.value.trim()) return;
+      child.dailyTasks.push({ id: uid(), title: newInput.value.trim(), activeFrom: newDateInput.value || null });
+      saveData();
+      openEditDailyModal(child);
+    }}, ["追加"]));
+    box.appendChild(addRow);
+    return box;
+  };
+  render();
+}
+
+/* ---- サマータスク編集モーダル ---- */
+function openEditSummerModal(child){
+  ui.modal = function(){
+    var box = el("div", {});
+    box.appendChild(el("div", {class:"modal-title"}, ["✎ サマータスク編集"]));
+    box.appendChild(el("p", {class:"muted-small", style:"margin-bottom:10px;"}, [
+      "8/23までに終わらせたいタスクの一覧です。休みの日数に均等に割り振られます。単元数を指定すると自動でその数だけ追加されます。"
+    ]));
+    child.summerTasks.forEach(function(t){
+      var row = el("div", {class:"list-edit-item"});
+      var input = el("input", {type:"text"});
+      input.value = t.title;
+      input.onchange = function(){ t.title = input.value; saveData(); };
+      row.appendChild(input);
+      row.appendChild(el("button", {class:"danger small", onclick:function(){
+        if(t.assignedDate){
+          var arr = child.dayAssignments[t.assignedDate];
+          if(arr){ child.dayAssignments[t.assignedDate] = arr.filter(function(id){ return id!==t.id; }); }
+        }
+        child.summerTasks = child.summerTasks.filter(function(x){ return x.id!==t.id; });
+        saveData();
+        openEditSummerModal(child);
+      }}, ["削除"]));
+      box.appendChild(row);
+    });
+    var addRow = el("div", {class:"list-edit-item"});
+    var newInput = el("input", {type:"text", placeholder:"新しいサマータスク名"});
+    var newCountInput = el("input", {type:"number", min:"1", placeholder:"単元数(既定1)"});
+    addRow.appendChild(newInput);
+    addRow.appendChild(newCountInput);
+    addRow.appendChild(el("button", {class:"small", onclick:function(){
+      if(!newInput.value.trim()) return;
+      var count = Math.max(1, Number(newCountInput.value)||1);
+      var newTasks = expandUnits(newInput.value.trim(), count);
+      child.summerTasks = child.summerTasks.concat(newTasks);
+      saveData();
+      openEditSummerModal(child);
+    }}, ["追加"]));
+    box.appendChild(addRow);
+    return box;
+  };
+  render();
+}
+
+/* ---- 設定モーダル ---- */
+function openSettingsModal(child){
+  ui.modal = function(){
+    var box = el("div", {});
+    box.appendChild(el("div", {class:"modal-title"}, ["⚙ ポイント設定"]));
+
+    function numField(labelText, key){
+      var f = el("div", {class:"field"});
+      f.appendChild(el("label", {}, [labelText]));
+      var input = el("input", {type:"number", min:"0"});
+      input.value = child.settings[key];
+      input.onchange = function(){ child.settings[key] = Number(input.value)||0; saveData(); render(); };
+      f.appendChild(input);
+      return f;
+    }
+
+    box.appendChild(numField("その日のタスクを当日中に全部達成したときのポイント", "pointsPerDay"));
+    box.appendChild(numField("午前中に全部達成できたときの倍率（例:2で2倍）", "morningMultiplier"));
+    box.appendChild(numField("当日中に終わらず、後から全部終わらせたときのポイント（日単位）", "pointsPerLateDay"));
+    box.appendChild(numField("サマータスクを8/23より早く全部終えたとき、早めた1日あたりのボーナスポイント", "pointsPerEarlyDay"));
+
+    box.appendChild(el("button", {class:"secondary", style:"width:100%;margin-top:8px;", onclick:closeModal}, ["閉じる"]));
+    return box;
+  };
+  render();
+}
+
+/* ---- 名前変更モーダル ---- */
+function openRenameModal(child){
+  ui.modal = function(){
+    var box = el("div", {});
+    box.appendChild(el("div", {class:"modal-title"}, ["✎ 名前を変更"]));
+    var input = el("input", {type:"text"});
+    input.value = child.name;
+    box.appendChild(el("div", {class:"field"}, [input]));
+    box.appendChild(el("button", {class:"secondary", style:"width:100%;", onclick:function(){
+      if(input.value.trim()) child.name = input.value.trim();
+      saveData();
+      closeModal();
+    }}, ["保存"]));
+    return box;
+  };
+  render();
+}
+
+/* ---------- 初期表示 ---------- */
+render();
+
+})();
+</script>
+</body>
+</html>
