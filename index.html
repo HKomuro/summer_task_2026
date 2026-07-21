@@ -243,6 +243,7 @@
 <body>
 <div id="app"></div>
 <script>
+
 (function(){
 "use strict";
 
@@ -303,7 +304,7 @@ function expandUnits(title, count, opts){
     } else {
       label = title;
     }
-    arr.push({ id: uid(), title: label, assignedDate: null, completedDate: null, completedAt: null });
+    arr.push({ id: uid(), title: label, assignedDate: null, completedDate: null, completionTiming: null });
   }
   return arr;
 }
@@ -385,10 +386,23 @@ function loadData(){
         if(!rec) return;
         if(Array.isArray(rec.daily)){
           var obj = {};
-          rec.daily.forEach(function(id){ obj[id] = date + "T12:00:00"; });
+          rec.daily.forEach(function(id){ obj[id] = "afternoon"; });
           rec.daily = obj;
         } else if(!rec.daily){
           rec.daily = {};
+        } else {
+          // 旧バージョン（実際のタップ時刻を記録していた版）からの移行:
+          // タイムスタンプ文字列("YYYY-MM-DDTHH:MM:SS")を morning/afternoon/late に変換する
+          Object.keys(rec.daily).forEach(function(taskId){
+            var v = rec.daily[taskId];
+            if(v === "morning" || v === "afternoon" || v === "late") return;
+            if(typeof v === "string" && v.indexOf("T") !== -1){
+              if(v.slice(0,10) !== date){ rec.daily[taskId] = "late"; }
+              else { rec.daily[taskId] = (Number(v.slice(11,13)) < 12) ? "morning" : "afternoon"; }
+            } else {
+              rec.daily[taskId] = "afternoon";
+            }
+          });
         }
       });
       if(!c.dayAssignments) c.dayAssignments={};
@@ -407,7 +421,18 @@ function loadData(){
       if(c.settings.pointsPerLateDay === undefined) c.settings.pointsPerLateDay = 5;
       if(c.settings.morningMultiplier === undefined) c.settings.morningMultiplier = 2;
       c.dailyTasks.forEach(function(t){ if(t.activeFrom === undefined) t.activeFrom = null; });
-      c.summerTasks.forEach(function(t){ if(t.completedAt === undefined) t.completedAt = null; });
+      c.summerTasks.forEach(function(t){
+        if(t.completionTiming === undefined){
+          if(t.completedAt && t.completedDate){
+            var hour = Number(String(t.completedAt).slice(11,13));
+            t.completionTiming = isNaN(hour) ? "afternoon" : (hour < 12 ? "morning" : "afternoon");
+          } else if(t.completedDate){
+            t.completionTiming = "afternoon";
+          } else {
+            t.completionTiming = null;
+          }
+        }
+      });
     });
     return parsed;
   }catch(e){
@@ -480,12 +505,15 @@ function unpickSummerTaskForDay(child, task, dateStr){
 function dailyTasksForDate(child, date){
   return child.dailyTasks.filter(function(t){ return !t.activeFrom || t.activeFrom <= date; });
 }
-function getDailyTimestamp(child, date, taskId){
+// 完了タイミングは実際にタップした時刻からではなく、親が明示的に選ぶ
+// ("morning"=当日午前 / "afternoon"=当日午後 / "late"=後日まとめて)。
+// これにより、後からまとめて登録しても正しいタイミングを記録できる。
+function getDailyTiming(child, date, taskId){
   var rec = child.completions[date];
   return (rec && rec.daily && rec.daily[taskId]) || null;
 }
 function isDailyTaskDone(child, date, taskId){
-  return !!getDailyTimestamp(child, date, taskId);
+  return !!getDailyTiming(child, date, taskId);
 }
 function isDayFullyComplete(child, date){
   var s = getDayStatus(child, date).status;
@@ -507,23 +535,21 @@ function getDayStatus(child, date){
   var summerAllDone = (assignedIds.length >= quota) && (completedCount === assignedIds.length);
   if(!dailyAllDone || !summerAllDone) return { status:"incomplete" };
 
-  var allOnTime = true;
-  var timestamps = [];
+  var anyLate = false;
+  var allMorning = true;
   dailyList.forEach(function(t){
-    var ts = getDailyTimestamp(child, date, t.id);
-    timestamps.push(ts);
-    if(!ts || ts.slice(0,10) !== date) allOnTime = false;
+    var timing = getDailyTiming(child, date, t.id);
+    if(timing === "late") anyLate = true;
+    if(timing !== "morning") allMorning = false;
   });
   assignedIds.forEach(function(id){
     var t = child.summerTasks.find(function(x){ return x.id === id; });
-    timestamps.push(t.completedAt || (t.completedDate + "T12:00:00"));
-    if(t.completedDate !== date) allOnTime = false;
+    var timing = t.completionTiming;
+    if(timing === "late") anyLate = true;
+    if(timing !== "morning") allMorning = false;
   });
-  if(!allOnTime) return { status:"late" };
-
-  var latest = timestamps.reduce(function(a,b){ return (b && b > a) ? b : a; }, "");
-  var hour = latest ? Number(latest.slice(11,13)) : 24;
-  return { status:"ontime", morning: hour < 12 };
+  if(anyLate) return { status:"late" };
+  return { status:"ontime", morning: allMorning };
 }
 function dayEarnedPoints(child, date){
   var status = getDayStatus(child, date);
@@ -715,9 +741,10 @@ function renderChildPage(child){
     wrap.appendChild(el("div", {class:"card"}, [
       el("div", {class:"section-title"}, ["⏰ まだ終わっていない宿題（" + overdue.length + "件）"]),
       el("div", {}, overdue.map(function(t){
-        return renderTaskItem(t.title + "（予定日 " + formatDisplay(t.assignedDate) + "）", false, function(){
-          completeSummerTaskNow(child, t.id);
-        });
+        var key = "overdue:" + t.id;
+        return renderChoosableTask(key, t.title + "（予定日 " + formatDisplay(t.assignedDate) + "）", null, function(chosen){
+          setSummerTiming(child, t, t.assignedDate, chosen);
+        }, function(){ /* 未完了なのでここには来ない */ });
       }))
     ]));
   }
@@ -743,6 +770,50 @@ function renderTaskItem(label, done, onToggle, extraTag, justStamped){
     item.appendChild(el("div", {class:"stamp"}, ["できた!"]));
   }
   return item;
+}
+
+/* ---- 完了タイミング選択つきタスク（親が後から登録しても正しく記録できる） ---- */
+var expandedTaskKey = null;
+var TIMING_LABEL = { morning:"☀️ 午前", afternoon:"🌤 午後", late:"📅 後日" };
+function renderChoosableTask(keyId, label, doneTiming, onCommit, onUndo, extraTag){
+  if(doneTiming){
+    var item = el("div", {class:"task-item done"});
+    item.appendChild(el("div", {class:"task-check"}, ["✓"]));
+    var labelWrap = el("div", {class:"task-label"}, [label + "　"]);
+    labelWrap.appendChild(el("span", {class:"tag"}, [TIMING_LABEL[doneTiming] || doneTiming]));
+    if(extraTag) labelWrap.appendChild(extraTag);
+    item.appendChild(labelWrap);
+    item.onclick = function(){ onUndo(); render(); };
+    return item;
+  }
+  if(expandedTaskKey === keyId){
+    var box = el("div", {class:"task-item", style:"flex-direction:column;align-items:stretch;gap:8px;"});
+    var lbl = el("div", {class:"task-label", style:"font-weight:bold;"}, [label]);
+    if(extraTag) lbl.appendChild(extraTag);
+    box.appendChild(lbl);
+    box.appendChild(el("div", {class:"muted-small"}, ["いつ終わった？"]));
+    var btnRow = el("div", {class:"row wrap", style:"gap:6px;"});
+    ["morning","afternoon","late"].forEach(function(timing){
+      btnRow.appendChild(el("button", {class:"small " + (timing==="late"?"ghost":"secondary"), onclick:function(){
+        expandedTaskKey = null;
+        onCommit(timing);
+        render();
+      }}, [TIMING_LABEL[timing]]));
+    });
+    box.appendChild(btnRow);
+    box.appendChild(el("button", {class:"small ghost", style:"align-self:flex-start;", onclick:function(){
+      expandedTaskKey = null;
+      render();
+    }}, ["キャンセル"]));
+    return box;
+  }
+  var row = el("div", {class:"task-item", onclick:function(){ expandedTaskKey = keyId; render(); }}, [
+    el("div", {class:"task-check"}, [""]),
+  ]);
+  var labelEl = el("div", {class:"task-label"}, [label]);
+  if(extraTag) labelEl.appendChild(extraTag);
+  row.appendChild(labelEl);
+  return row;
 }
 
 /* ---- カレンダー描画 ---- */
@@ -830,7 +901,6 @@ function renderModal(){
 }
 
 /* ---- 日付詳細モーダル ---- */
-var justStampedTaskKey = null;
 function openDayModal(child, dateStr){
   ui.modal = function(){
     var box = el("div", {});
@@ -852,15 +922,15 @@ function openDayModal(child, dateStr){
     if(dailyList.length){
       box.appendChild(el("div", {class:"section-title"}, ["デイリータスク"]));
       dailyList.forEach(function(t){
-        var done = isDailyTaskDone(child, dateStr, t.id);
+        var timing = getDailyTiming(child, dateStr, t.id);
         var key = dateStr+":daily:"+t.id;
-        var stamped = justStampedTaskKey === key;
-        var item = renderTaskItem(t.title, done, function(){
-          toggleDailyTask(child, dateStr, t.id);
-        }, null, stamped);
+        var item = renderChoosableTask(key, t.title, timing, function(chosen){
+          setDailyTiming(child, dateStr, t.id, chosen);
+        }, function(){
+          clearDailyTiming(child, dateStr, t.id);
+        });
         box.appendChild(item);
       });
-      justStampedTaskKey = null;
     }
 
     var quota = child.dayQuota[dateStr] || 0;
@@ -879,15 +949,17 @@ function openDayModal(child, dateStr){
       assignedIds.forEach(function(id){
         var t = child.summerTasks.find(function(x){ return x.id===id; });
         if(!t) return;
-        var done = !!t.completedDate;
-        var item = renderTaskItem(t.title, done, function(){
-          toggleSummerTaskOnDate(child, t, dateStr);
-        });
-        if(!done){
-          var tag = el("button", {class:"small ghost", style:"padding:4px 8px;font-size:11px;"}, ["選び直す"]);
+        var key = dateStr+":summer:"+t.id;
+        var tag = null;
+        if(!t.completedDate){
+          tag = el("button", {class:"small ghost", style:"padding:4px 8px;font-size:11px;"}, ["選び直す"]);
           tag.onclick = function(e){ if(e && e.stopPropagation) e.stopPropagation(); unpickSummerTaskForDay(child, t, dateStr); };
-          item.appendChild(tag);
         }
+        var item = renderChoosableTask(key, t.title, t.completedDate ? t.completionTiming : null, function(chosen){
+          setSummerTiming(child, t, dateStr, chosen);
+        }, function(){
+          clearSummerTiming(t);
+        }, tag);
         box.appendChild(item);
       });
     }
@@ -917,51 +989,45 @@ function openDayModal(child, dateStr){
   render();
 }
 
-function toggleDailyTask(child, dateStr, taskId){
+// デイリータスク：完了タイミング（morning/afternoon/late）を親が指定して記録する
+function setDailyTiming(child, dateStr, taskId, timing){
   if(!child.completions[dateStr]) child.completions[dateStr] = { daily: {} };
   if(!child.completions[dateStr].daily) child.completions[dateStr].daily = {};
-  var rec = child.completions[dateStr].daily;
   var wasComplete = isDayFullyComplete(child, dateStr);
-  if(rec[taskId]){
-    delete rec[taskId];
-  } else {
-    rec[taskId] = nowLocalStamp();
-    justStampedTaskKey = dateStr+":daily:"+taskId;
-  }
+  child.completions[dateStr].daily[taskId] = timing;
   saveData();
   var nowComplete = isDayFullyComplete(child, dateStr);
   if(!wasComplete && nowComplete) triggerCelebration(dayEarnedPoints(child, dateStr));
-  openDayModal(child, dateStr);
 }
+function clearDailyTiming(child, dateStr, taskId){
+  if(child.completions[dateStr] && child.completions[dateStr].daily){
+    delete child.completions[dateStr].daily[taskId];
+    saveData();
+  }
+}
+// サマータスク：どの日の分として、いつ終わったかを記録する
+function setSummerTiming(child, task, creditDate, timing){
+  var wasComplete = isDayFullyComplete(child, creditDate);
+  task.completedDate = creditDate;
+  task.completionTiming = timing;
+  saveData();
+  var nowComplete = isDayFullyComplete(child, creditDate);
+  if(!wasComplete && nowComplete) triggerCelebration(dayEarnedPoints(child, creditDate));
+}
+function clearSummerTiming(task){
+  task.completedDate = null;
+  task.completionTiming = null;
+  saveData();
+}
+// 前倒し・未割当のサマータスクを、日付に紐づけず単純に完了/取消する（タイミングは問わない）
 function setSummerTaskCompleted(t, completed){
   if(completed){
     t.completedDate = todayStr();
-    t.completedAt = nowLocalStamp();
+    t.completionTiming = null;
   } else {
     t.completedDate = null;
-    t.completedAt = null;
+    t.completionTiming = null;
   }
-}
-function toggleSummerTaskOnDate(child, task, dateStr){
-  var wasComplete = isDayFullyComplete(child, dateStr);
-  setSummerTaskCompleted(task, !task.completedDate);
-  saveData();
-  var nowComplete = isDayFullyComplete(child, dateStr);
-  if(!wasComplete && nowComplete) triggerCelebration(dayEarnedPoints(child, dateStr));
-  openDayModal(child, dateStr);
-}
-function completeSummerTaskNow(child, taskId){
-  var t = child.summerTasks.find(function(x){ return x.id===taskId; });
-  if(!t) return;
-  var d = t.assignedDate;
-  var wasComplete = d ? isDayFullyComplete(child, d) : false;
-  setSummerTaskCompleted(t, true);
-  saveData();
-  if(d){
-    var nowComplete = isDayFullyComplete(child, d);
-    if(!wasComplete && nowComplete) triggerCelebration(dayEarnedPoints(child, d));
-  }
-  render();
 }
 
 /* ---- サマータスク一覧モーダル（前倒し実行ページ） ---- */
@@ -988,17 +1054,20 @@ function openSummerListModal(child){
         } else {
           tag = el("span", {class:"tag"}, ["未割当"]);
         }
-        box.appendChild(renderTaskItem(t.title, false, function(){
-          var d = t.assignedDate;
-          var wasComplete = d ? isDayFullyComplete(child, d) : false;
-          setSummerTaskCompleted(t, true);
-          saveData();
-          if(d){
-            var nowComplete = isDayFullyComplete(child, d);
-            if(!wasComplete && nowComplete) triggerCelebration(dayEarnedPoints(child, d));
-          }
-          openSummerListModal(child);
-        }, tag));
+        if(t.assignedDate){
+          // 特定の日に紐づくタスクは、いつ終わったか選んで記録する
+          var key = "summerlist:" + t.id;
+          box.appendChild(renderChoosableTask(key, t.title, null, function(chosen){
+            setSummerTiming(child, t, t.assignedDate, chosen);
+          }, function(){}, tag));
+        } else {
+          // どの日にも紐づいていない前倒しタスクは、シンプルに完了だけ記録する
+          box.appendChild(renderTaskItem(t.title, false, function(){
+            setSummerTaskCompleted(t, true);
+            saveData();
+            openSummerListModal(child);
+          }, tag));
+        }
       });
     }
     if(done.length){
